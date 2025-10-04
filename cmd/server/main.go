@@ -33,6 +33,7 @@ func main() {
 	}
 
 	// use the PublishJSON function to publish a message to the exchange:
+	// PublishJSON from internal/pubsub/publish.go
 	err = pubsub.PublishJSON(
 		// Use the channel you created:
 		publishCh,
