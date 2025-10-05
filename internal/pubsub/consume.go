@@ -48,12 +48,14 @@ func SubscribeJSON[T any](
 	}
 	// create the unmarshaller function:
 	unmarshaller := func(data []byte) (T, error) {
+		// (Could also do these next 2 steps inside the goroutine)
 		var target T
 		err := json.Unmarshal(data, &target)
 		return target, err
 	}
 	// Start a goroutine that ranges over the channel of deliveries:
 	go func() {
+		// make sure to close the channel when the goroutine ends:
 		defer ch.Close()
 		for msg := range msgs {
 			// Unmarshal the body (raw bytes) of each message delivery into the (generic) T type:
@@ -72,10 +74,6 @@ func SubscribeJSON[T any](
 	// return nil, since there was no error:
 	return nil
 }
-
-
-
-
 
 	// Declare and bind a transient queue by creating and using a new function in the 
 	// internal/pubsub package:

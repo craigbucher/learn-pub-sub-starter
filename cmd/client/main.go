@@ -34,20 +34,20 @@ exchange: peril_direct (this is a constant in the internal/routing package)
 queueName: pause.username where username is the user's input. The pause section of the name is the routing key constant in the internal/routing package and is joined by a ..
 routingKey: pause (this is a constant in the internal/routing package)
 queueType: transient */
-	_, queue, err := pubsub.DeclareAndBind(
-		conn, 								// conn, established above
-		routing.ExchangePerilDirect,		// exchange
-		routing.PauseKey + "." + username,	// queueName
-		routing.PauseKey,					// key
-		pubsub.SimpleQueueTransient,		// queueType
-	)
-	if err != nil {
-		log.Fatalf("could not subscribe to pause: %v", err)
-	}
-	fmt.Printf("Queue %v declared and bound!\n", queue.Name)
+	// _, queue, err := pubsub.DeclareAndBind(
+	// 	conn, 								// conn, established above
+	// 	routing.ExchangePerilDirect,		// exchange
+	// 	routing.PauseKey + "." + username,	// queueName
+	// 	routing.PauseKey,					// key
+	// 	pubsub.SimpleQueueTransient,		// queueType
+	// )
+	// if err != nil {
+	// 	log.Fatalf("could not subscribe to pause: %v", err)
+	// }
+	// fmt.Printf("Queue %v declared and bound!\n", queue.Name)
 
 	// after declaring and binding the pause queue, use the NewGameState function in 
-	// internal/gamelogic to create a new game state:
+	// internal/gamelogic to create a new game state (and return a pointer to it):
 	gs := gamelogic.NewGameState(username)
 
 	// In the cmd/client package's main function, after creating the game state, call 
@@ -55,7 +55,7 @@ queueType: transient */
 	err = pubsub.SubscribeJSON(
 		conn,									// the connection
 		routing.ExchangePerilDirect,			// The direct exchange (constant can be found in internal/routing)
-		routing.PauseKey+"."+gs.GetUsername(),	// A queue named pause.username where username is the username of the player
+		routing.PauseKey+"."+username,	// A queue named pause.username where username is the username of the player
 		routing.PauseKey,						// The routing key pause (constant can be found in internal/routing)
 		pubsub.SimpleQueueTransient,			// Transient queue type
 		handlerPause(gs),						// The new handler we just created
