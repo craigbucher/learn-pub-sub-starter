@@ -2,6 +2,7 @@ package pubsub
 
 import (
 	"fmt"
+	"encoding/json"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )
@@ -14,6 +15,67 @@ const (
 	SimpleQueueDurable SimpleQueueType = iota
 	SimpleQueueTransient
 )
+
+/* In your internal/pubsub package, create a new function called SubscribeJSON, here's my 
+function signature: */
+func SubscribeJSON[T any](
+    conn *amqp.Connection,
+    exchange,
+    queueName,
+    key string,
+    queueType SimpleQueueType, // an enum to represent "durable" or "transient"
+    handler func(T),
+) error {
+	// Call DeclareAndBind to make sure that the given queue exists and is bound to the exchange:
+	ch, queue, err := DeclareAndBind(conn, exchange, queueName, key, queueType)
+	if err != nil {
+		return fmt.Errorf("could not declare and bind queue: %v", err)
+	}
+	/* Get a new chan of amqp.Delivery structs by using the channel.Consume method.
+		- Use an empty string for the consumer name so that it will be auto-generated
+		- Set all other parameters to false/nil */
+	msgs, err := ch.Consume(
+		queue.Name, // queue
+		"",         // consumer
+		false,      // auto-ack
+		false,      // exclusive
+		false,      // no-local
+		false,      // no-wait
+		nil,        // args
+	)
+	if err != nil {
+		return fmt.Errorf("could not consume messages: %v", err)
+	}
+	// create the unmarshaller function:
+	unmarshaller := func(data []byte) (T, error) {
+		var target T
+		err := json.Unmarshal(data, &target)
+		return target, err
+	}
+	// Start a goroutine that ranges over the channel of deliveries:
+	go func() {
+		defer ch.Close()
+		for msg := range msgs {
+			// Unmarshal the body (raw bytes) of each message delivery into the (generic) T type:
+			target, err := unmarshaller(msg.Body)
+			if err != nil {
+				fmt.Printf("could not unmarshal message: %v\n", err)
+				continue
+			}
+			// Call the given handler function with the unmarshaled message:
+			// (handler is passed in as a function parameter)
+			handler(target)
+			// Acknowledge the message with delivery.Ack(false) to remove it from the queue:
+			msg.Ack(false)
+		}
+	}()
+	// return nil, since there was no error:
+	return nil
+}
+
+
+
+
 
 	// Declare and bind a transient queue by creating and using a new function in the 
 	// internal/pubsub package:

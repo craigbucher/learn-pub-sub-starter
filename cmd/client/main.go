@@ -50,6 +50,20 @@ queueType: transient */
 	// internal/gamelogic to create a new game state:
 	gs := gamelogic.NewGameState(username)
 
+	// In the cmd/client package's main function, after creating the game state, call 
+	// pubsub.SubscribeJSON with the following parameters:
+	err = pubsub.SubscribeJSON(
+		conn,									// the connection
+		routing.ExchangePerilDirect,			// The direct exchange (constant can be found in internal/routing)
+		routing.PauseKey+"."+gs.GetUsername(),	// A queue named pause.username where username is the username of the player
+		routing.PauseKey,						// The routing key pause (constant can be found in internal/routing)
+		pubsub.SimpleQueueTransient,			// Transient queue type
+		handlerPause(gs),						// The new handler we just created
+	)
+	if err != nil {
+		log.Fatalf("could not subscribe to JSON: %v", err)
+	}
+
 	// Add a REPL loop similar to what you did in the cmd/server application:
 	for {
 		input := gamelogic.GetInput()

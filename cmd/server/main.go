@@ -33,6 +33,22 @@ func main() {
 		log.Fatalf("could not create channel: %v", err)
 	}
 	defer publishCh.Close()
+
+	/* Update the cmd/server application to declare and bind a queue to the new peril_topic exchange.
+		- It should be a durable queue named game_logs.
+		- The routing key should be game_logs.*. We'll go into detail on the routing key later. */
+	_, queue, err := pubsub.DeclareAndBind(
+		conn, 								// conn, established above
+		routing.ExchangePerilTopic,			// exchange
+		routing.GameLogSlug,				// queueName
+		routing.GameLogSlug+".*",			// key
+		pubsub.SimpleQueueDurable,			// queueType
+	)
+	if err != nil {
+		log.Fatalf("could not subscribe to game_logs: %v", err)
+	}
+	fmt.Printf("Queue %v declared and bound!\n", queue.Name)
+
 	// Run the PrintServerHelp function in internal/gamelogic as the server starts up so that 
 	// you can see the commands the user of the REPL can use:
 	gamelogic.PrintServerHelp()
