@@ -3,8 +3,8 @@ package main
 import (
 	"fmt"
 	"log"
-	"os"
-	"os/signal"
+	// "os"
+	// "os/signal"
 
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/routing"
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/pubsub"
@@ -46,11 +46,65 @@ queueType: transient */
 	}
 	fmt.Printf("Queue %v declared and bound!\n", queue.Name)
 
-	// wait for ctrl+c
-	signalChan := make(chan os.Signal, 1)
-	// If a signal is received, print a message to the console that the program is shutting down 
-	// and close the connection:
-	signal.Notify(signalChan, os.Interrupt)
-	<-signalChan
-	fmt.Println("RabbitMQ connection closed.")
+	// after declaring and binding the pause queue, use the NewGameState function in 
+	// internal/gamelogic to create a new game state:
+	gs := gamelogic.NewGameState(username)
+
+	// Add a REPL loop similar to what you did in the cmd/server application:
+	for {
+		input := gamelogic.GetInput()
+		if len(input) == 0 {
+			continue
+		}
+		switch input[0] {
+			/* The spawn command allows a player to add a new unit to the map under their control. 
+			Use the gamestate.CommandSpawn method and pass in the "words" from the GetInput command.
+				- Possible unit types are: infantry, cavalry, artillery
+				- Possible locations are: americas, europe, africa, asia, antarctica, australia
+				- Example usage: spawn europe infantry
+				- After spawning a unit, you should see its ID printed to the console. */
+			case "spawn":
+				err = gs.CommandSpawn(input)
+				if err != nil {
+					fmt.Println(err)
+					continue
+				}
+			/* The move command allows a player to move their units to a new location. It accepts 
+			two arguments: the destination, and the ID of the unit. Call the gamestate.CommandMove 
+			method and pass in all with "words" from the GetInput command. If the move is successful,
+			print a message indicating that it worked.
+				- Example usage: move europe 1 */
+			case "move":
+				_, err := gs.CommandMove(input)
+				if err != nil {
+					fmt.Println(err)
+					continue
+				}
+			/* The status command uses the gamestate.CommandStatus method to print the current 
+			status of the player's game state. */
+			case "status":
+				gs.CommandStatus()
+			/* The help command uses the gamelogic.PrintClientHelp function to print a list of 
+			available commands. */
+			case "help":
+				gamelogic.PrintClientHelp()
+			// For now, the spam command just prints a message that says "Spamming not allowed yet!"
+			case "spam":
+				fmt.Println("Spamming not allowed yet!")
+			// The quit command uses the gamelogic.PrintQuit function to print a message, then exit the REPL
+			case "quit":
+				gamelogic.PrintQuit()
+				return
+			// If any other command is entered, print an error message and continue the loop:
+			default:
+				fmt.Println("unknown command")
+		}
+	}
+	// // wait for ctrl+c
+	// signalChan := make(chan os.Signal, 1)
+	// // If a signal is received, print a message to the console that the program is shutting down 
+	// // and close the connection:
+	// signal.Notify(signalChan, os.Interrupt)
+	// <-signalChan
+	// fmt.Println("RabbitMQ connection closed.")
 }
