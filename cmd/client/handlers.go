@@ -25,3 +25,13 @@ func handlerPause(gs *gamelogic.GameState) func(routing.PlayingState) {
 		gs.HandlePause(ps)
 	}
 }
+
+// The handler for new messages should use the GameState's HandleMove method and then print 
+// a new > prompt for the user:
+// (explanations above)
+func handlerMove(gs *gamelogic.GameState) func(gamelogic.ArmyMove) {
+	return func(move gamelogic.ArmyMove) {
+		defer fmt.Print("> ")
+		gs.HandleMove(move)
+	}
+}

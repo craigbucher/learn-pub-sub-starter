@@ -23,6 +23,13 @@ func main() {
 	defer conn.Close()
 	fmt.Println("Peril game client connected to RabbitMQ!")
 
+	// Create a channel to *publish* messages (like army moves) or to consume messages from queues:
+	// (similar to server/main.go)
+	publishCh, err := conn.Channel()
+	if err != nil {
+		log.Fatalf("could not create channel: %v", err)
+	}
+
 	// Use the ClientWelcome() function in internal/gamelogic to prompt the user for a username:
 	username, err := gamelogic.ClientWelcome()
 	if err != nil {
@@ -50,15 +57,32 @@ queueType: transient */
 	// internal/gamelogic to create a new game state (and return a pointer to it):
 	gs := gamelogic.NewGameState(username)
 
+	// Each game client should subscribe to moves from other players before starting its REPL.
+	/* Bind to the army_moves.* routing key:
+		- Use army_moves.username as the queue name, where username is the name of the player
+		- Use the peril_topic exchange
+		- Use a transient queue */
+	err = pubsub.SubscribeJSON(
+		conn,									// the connection
+		routing.ExchangePerilTopic,				// The direct exchange (constant can be found in internal/routing)
+		routing.ArmyMovesPrefix+"."+username, 	// A queue named army_moves.username where username is the username of the player
+		routing.ArmyMovesPrefix+".*",			// The routing key army_moves.* (constant can be found in internal/routing)
+		pubsub.SimpleQueueTransient,			// Transient queue type
+		handlerMove(gs),						// From client/handlers.go
+	)
+	if err != nil {
+		log.Fatalf("could not subscribe to army moves: %v", err)
+	}
+
 	// In the cmd/client package's main function, after creating the game state, call 
 	// pubsub.SubscribeJSON with the following parameters:
 	err = pubsub.SubscribeJSON(
 		conn,									// the connection
 		routing.ExchangePerilDirect,			// The direct exchange (constant can be found in internal/routing)
-		routing.PauseKey+"."+username,	// A queue named pause.username where username is the username of the player
+		routing.PauseKey+"."+username,			// A queue named pause.username where username is the username of the player
 		routing.PauseKey,						// The routing key pause (constant can be found in internal/routing)
 		pubsub.SimpleQueueTransient,			// Transient queue type
-		handlerPause(gs),						// The new handler we just created
+		handlerPause(gs),						// From client/handlers.go
 	)
 	if err != nil {
 		log.Fatalf("could not subscribe to JSON: %v", err)
@@ -89,11 +113,27 @@ queueType: transient */
 			print a message indicating that it worked.
 				- Example usage: move europe 1 */
 			case "move":
-				_, err := gs.CommandMove(input)
+				mv, err := gs.CommandMove(input)
 				if err != nil {
 					fmt.Println(err)
 					continue
 				}
+				// The move command in the REPL should now publish a move:
+				err = pubsub.PublishJSON(
+				publishCh,
+				// Use the peril_topic exchange:							
+				routing.ExchangePerilTopic,
+				// Publish the move to the army_moves.username routing key, where username is 
+				// the name of the player:
+				routing.ArmyMovesPrefix+"."+mv.Player.Username,
+				mv,
+				)
+				if err != nil {
+					fmt.Printf("error: %s\n", err)
+					continue
+				}
+				// Log a message to the console stating that the move was published successfully:
+				fmt.Printf("Moved %v units to %s\n", len(mv.Units), mv.ToLocation)
 			/* The status command uses the gamestate.CommandStatus method to print the current 
 			status of the player's game state. */
 			case "status":
