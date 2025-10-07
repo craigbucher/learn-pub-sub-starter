@@ -7,6 +7,9 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
+// Define AckType:
+type Acktype int
+
 // Define your SimpleQueueType
 type SimpleQueueType int
 
@@ -14,6 +17,14 @@ type SimpleQueueType int
 const (
 	SimpleQueueDurable SimpleQueueType = iota
 	SimpleQueueTransient
+)
+
+// declares a named type Acktype:
+// iota auto-increments starting at 0 within the block
+const (
+	Ack Acktype = iota	// 0
+	NackDiscard			// 1
+	NackRequeue			// 2
 )
 
 /* In your internal/pubsub package, create a new function called SubscribeJSON, here's my 
@@ -24,7 +35,9 @@ func SubscribeJSON[T any](
     queueName,
     key string,
     queueType SimpleQueueType, // an enum to represent "durable" or "transient"
-    handler func(T),
+	// Update your internal/pubsub.SubscribeJSON function's handler parameter to return an 
+	// "acktype" instead of nothing:
+    handler func(T) Acktype,
 ) error {
 	// Call DeclareAndBind to make sure that the given queue exists and is bound to the exchange:
 	ch, queue, err := DeclareAndBind(conn, exchange, queueName, key, queueType)
@@ -66,9 +79,27 @@ func SubscribeJSON[T any](
 			}
 			// Call the given handler function with the unmarshaled message:
 			// (handler is passed in as a function parameter)
-			handler(target)
-			// Acknowledge the message with delivery.Ack(false) to remove it from the queue:
-			msg.Ack(false)
+			// For testing/debugging purposes, add a log statement alongside each Ack/Nack call 
+			// to indicate which action occurred
+			switch handler(target) {
+			// Ack: msg.Ack(false):
+			// Processed successfully
+			case Ack:
+				msg.Ack(false)
+				fmt.Println("Ack")
+			// NackDiscard: msg.Nack(false, false):
+			// Not processed successfully, and should be discarded (to a dead-letter queue 
+			// if configured or just deleted entirely)
+			case NackDiscard:
+				msg.Nack(false, false)
+				fmt.Println("NackDiscard")
+			// msg.Nack(false, true):
+			// Not processed successfully, but should be requeued on the same queue to be 
+			// processed again (retry)
+			case NackRequeue:
+				msg.Nack(false, true)
+				fmt.Println("NackRequeue")
+			}
 		}
 	}()
 	// return nil, since there was no error:
