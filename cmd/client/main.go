@@ -68,10 +68,22 @@ queueType: transient */
 		routing.ArmyMovesPrefix+"."+username, 	// A queue named army_moves.username where username is the username of the player
 		routing.ArmyMovesPrefix+".*",			// The routing key army_moves.* (constant can be found in internal/routing)
 		pubsub.SimpleQueueTransient,			// Transient queue type
-		handlerMove(gs),						// From client/handlers.go
+		handlerMove(gs, publishCh),				// From client/handlers.go
 	)
 	if err != nil {
 		log.Fatalf("could not subscribe to army moves: %v", err)
+	}
+
+	err = pubsub.SubscribeJSON(
+		conn,
+		routing.ExchangePerilTopic,				// the connection
+		routing.WarRecognitionsPrefix,			// The topic exchange (constant can be found in internal/routing)
+		routing.WarRecognitionsPrefix+".*",		// The routing routing.WarRecognitionsPrefix (constant can be found in internal/routing)
+		pubsub.SimpleQueueDurable,				// Durable queue type
+		handlerWar(gs),							// From client/handlers.go
+	)
+	if err != nil {
+		log.Fatalf("could not subscribe to war declarations: %v", err)
 	}
 
 	// In the cmd/client package's main function, after creating the game state, call 

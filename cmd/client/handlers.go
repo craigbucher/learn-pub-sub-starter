@@ -6,6 +6,7 @@ import (
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/pubsub"
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/gamelogic"
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/routing"
+	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 /* Create a new function called handlerPause in the cmd/client application package. It accepts 
@@ -34,7 +35,8 @@ func handlerPause(gs *gamelogic.GameState) func(routing.PlayingState) pubsub.Ack
 // a new > prompt for the user:
 // (explanations above)
 // Update your client's "move" and "pause" handlers to return an "acktype":
-func handlerMove(gs *gamelogic.GameState) func(gamelogic.ArmyMove) pubsub.Acktype {
+func handlerMove(gs *gamelogic.GameState, publishCh *amqp.Channel) func(gamelogic.ArmyMove) pubsub.Acktype {
+// func handlerMove(gs *gamelogic.GameState) func(gamelogic.ArmyMove) pubsub.Acktype {
 	return func(move gamelogic.ArmyMove) pubsub.Acktype {
 		defer fmt.Print("> ")
 		moveOutcome := gs.HandleMove(move)
@@ -42,17 +44,64 @@ func handlerMove(gs *gamelogic.GameState) func(gamelogic.ArmyMove) pubsub.Acktyp
 		// The "move" handler should "NackDiscard" if:
 			// The move outcome was "same player":
 		case gamelogic.MoveOutcomeSamePlayer:
-			return pubsub.NackDiscard
+			return pubsub.Ack
 		// The "move" handler should only "Ack" if:
 			// The move outcome was "safe":
 		case gamelogic.MoveOutComeSafe:
 			return pubsub.Ack
-			// the move outcome was "make war":
+			// Update the "move" handler so that when detects MoveOutcomeMakeWar:
 		case gamelogic.MoveOutcomeMakeWar:
-			return pubsub.Ack
+			err := pubsub.PublishJSON(
+				publishCh,
+				routing.ExchangePerilTopic,
+				// Publish a message to the "topic" exchange with the routing key:
+				routing.WarRecognitionsPrefix+"."+gs.GetUsername(),	// $WARPREFIX.$USERNAME
+				gamelogic.RecognitionOfWar{
+					Attacker: move.Player,
+					Defender: gs.GetPlayerSnap(),
+				},
+			)
+			if err != nil {
+				fmt.Printf("error: %s\n", err)
+				return pubsub.NackRequeue
+			}
+			// NackRequeue the message: (Might seem crazy, but it will be fun)
+			return pubsub.NackRequeue
 		}
 		//  "NackDiscard" if the move outcome was anything else:
 		fmt.Println("error: unknown move outcome")
+		return pubsub.NackDiscard
+	}
+}
+
+// Create a new handler that consumes all the war messages that the "move" handler publishes, 
+// no matter the username in the routing key. It should:
+func handlerWar(gs *gamelogic.GameState) func(dw gamelogic.RecognitionOfWar) pubsub.Acktype {
+	return func(dw gamelogic.RecognitionOfWar) pubsub.Acktype {
+		// defer fmt.Print("> ") to ensure a new prompt is printed after the handler is done:
+		defer fmt.Print("> ")
+		// Call the gamestate's HandleWar method with the message's body:
+		warOutcome, _, _ := gs.HandleWar(dw)
+		switch warOutcome {
+		// If the outcome is gamelogic.WarOutcomeNotInvolved: NackRequeue the message so another 
+		// client can try to consume it:
+		case gamelogic.WarOutcomeNotInvolved:
+			return pubsub.NackRequeue
+		// If the outcome is gamelogic.WarOutcomeNoUnits: NackDiscard the message:
+		case gamelogic.WarOutcomeNoUnits:
+			return pubsub.NackDiscard
+		// If the outcome is gamelogic.WarOutcomeOpponentWon: Ack the message:
+		case gamelogic.WarOutcomeOpponentWon:
+			return pubsub.Ack
+		// If the outcome is gamelogic.WarOutcomeYouWon: Ack the message:
+		case gamelogic.WarOutcomeYouWon:
+			return pubsub.Ack
+		// If the outcome is gamelogic.WarOutcomeDraw: Ack the message:
+		case gamelogic.WarOutcomeDraw:
+			return pubsub.Ack
+		}
+		// If it's anything else, print an error and NackDiscard the message:
+		fmt.Println("error: unknown war outcome")
 		return pubsub.NackDiscard
 	}
 }

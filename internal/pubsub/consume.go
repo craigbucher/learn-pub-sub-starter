@@ -120,6 +120,7 @@ func SubscribeJSON[T any](
 	if err != nil {
 		return nil, amqp.Queue{}, fmt.Errorf("could not create channel: %v", err)
 	}
+
 	//Declare a new queue using .QueueDeclare():
 	queue, err := ch.QueueDeclare(
 		queueName,	// name
@@ -127,7 +128,11 @@ func SubscribeJSON[T any](
 		queueType != SimpleQueueDurable,	// The autoDelete parameter should be true if queueType is transient
 		queueType != SimpleQueueDurable,	// The exclusive parameter should be true if queueType is transient
 		false,		// The noWait parameter should be false
-		nil, 		// The args parameter should be nil
+		// RabbitMQ routes any rejected/expired messages from this queue to the specified 
+		// dead-letter exchange, which is bound to your dead-letter queue:
+		amqp.Table{
+			"x-dead-letter-exchange": "peril_dlx",	// Dead-letter exchange
+		}, 		
 	)
 	if err != nil {
 		return nil, amqp.Queue{}, fmt.Errorf("could not declare queue: %v", err)
