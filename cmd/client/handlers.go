@@ -63,10 +63,11 @@ func handlerMove(gs *gamelogic.GameState, publishCh *amqp.Channel) func(gamelogi
 			)
 			if err != nil {
 				fmt.Printf("error: %s\n", err)
+				// If publishing the war declaration fails, "NackRequeue" the message:
 				return pubsub.NackRequeue
 			}
-			// NackRequeue the message: (Might seem crazy, but it will be fun)
-			return pubsub.NackRequeue
+			// Otherwise, "Ack" the message:
+			return pubsub.Ack
 		}
 		//  "NackDiscard" if the move outcome was anything else:
 		fmt.Println("error: unknown move outcome")
@@ -75,13 +76,14 @@ func handlerMove(gs *gamelogic.GameState, publishCh *amqp.Channel) func(gamelogi
 }
 
 // Create a new handler that consumes all the war messages that the "move" handler publishes, 
-// no matter the username in the routing key. It should:
-func handlerWar(gs *gamelogic.GameState) func(dw gamelogic.RecognitionOfWar) pubsub.Acktype {
+// no matter the username in the routing key.
+// Update the war handler function in the client to publish game logs
+func handlerWar(gs *gamelogic.GameState, publishCh *amqp.Channel) func(dw gamelogic.RecognitionOfWar) pubsub.Acktype {
 	return func(dw gamelogic.RecognitionOfWar) pubsub.Acktype {
 		// defer fmt.Print("> ") to ensure a new prompt is printed after the handler is done:
 		defer fmt.Print("> ")
 		// Call the gamestate's HandleWar method with the message's body:
-		warOutcome, _, _ := gs.HandleWar(dw)
+		warOutcome, winner, loser := gs.HandleWar(dw)
 		switch warOutcome {
 		// If the outcome is gamelogic.WarOutcomeNotInvolved: NackRequeue the message so another 
 		// client can try to consume it:
@@ -91,13 +93,46 @@ func handlerWar(gs *gamelogic.GameState) func(dw gamelogic.RecognitionOfWar) pub
 		case gamelogic.WarOutcomeNoUnits:
 			return pubsub.NackDiscard
 		// If the outcome is gamelogic.WarOutcomeOpponentWon: Ack the message:
+		// If the outcome is that the opponent won, the message should say "{winner} won 
+		// a war against {loser}"
 		case gamelogic.WarOutcomeOpponentWon:
+			err := publishGameLog(
+				publishCh,
+				gs.GetUsername(),
+				fmt.Sprintf("%s won a war against %s", winner, loser),
+			)
+			if err != nil {
+				fmt.Printf("error: %s\n", err)
+				return pubsub.NackRequeue
+			}
 			return pubsub.Ack
 		// If the outcome is gamelogic.WarOutcomeYouWon: Ack the message:
+		// If the outcome is that the player won, the message should also say "{winner} won 
+		// a war against {loser}"
 		case gamelogic.WarOutcomeYouWon:
+			err := publishGameLog(
+				publishCh,
+				gs.GetUsername(),
+				fmt.Sprintf("%s won a war against %s", winner, loser),
+			)
+			if err != nil {
+				fmt.Printf("error: %s\n", err)
+				return pubsub.NackRequeue
+			}
 			return pubsub.Ack
 		// If the outcome is gamelogic.WarOutcomeDraw: Ack the message:
+		// If the outcome is a draw, the message should say "A war between {winner} and 
+		// {loser} resulted in a draw"
 		case gamelogic.WarOutcomeDraw:
+			err := publishGameLog(
+				publishCh,
+				gs.GetUsername(),
+				fmt.Sprintf("A war between %s and %s resulted in a draw", winner, loser),
+			)
+			if err != nil {
+				fmt.Printf("error: %s\n", err)
+				return pubsub.NackRequeue
+			}
 			return pubsub.Ack
 		}
 		// If it's anything else, print an error and NackDiscard the message:

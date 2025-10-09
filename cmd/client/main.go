@@ -3,8 +3,9 @@ package main
 import (
 	"fmt"
 	"log"
+	"time"
 	// "os"
-	// "os/signal"
+	// "os/signal""
 
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/routing"
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/pubsub"
@@ -80,7 +81,7 @@ queueType: transient */
 		routing.WarRecognitionsPrefix,			// The topic exchange (constant can be found in internal/routing)
 		routing.WarRecognitionsPrefix+".*",		// The routing routing.WarRecognitionsPrefix (constant can be found in internal/routing)
 		pubsub.SimpleQueueDurable,				// Durable queue type
-		handlerWar(gs),							// From client/handlers.go
+		handlerWar(gs, publishCh),				// From client/handlers.go
 	)
 	if err != nil {
 		log.Fatalf("could not subscribe to war declarations: %v", err)
@@ -166,6 +167,34 @@ queueType: transient */
 				fmt.Println("unknown command")
 		}
 	}
+}
+
+// Create a reusable function to publish a GameLog struct:
+	// publishCh *amqp.Channel - A pointer to an AMQP channel for publishing to RabbitMQ
+	// username - A string representing the player's username (used in the routing key)
+	// msg - A string containing the actual log message (e.g., "player1 won a war against player2")
+	// Returns an error (or nil if successful)
+	/* This function encapsulates all the logic needed to publish a game log. Instead of repeating 
+	the same publishing code every time you need to log something, you can just call this function 
+	with the username and message */
+func publishGameLog(publishCh *amqp.Channel, username, msg string) error {
+	return pubsub.PublishGob(
+		publishCh,								// the connection
+		routing.ExchangePerilTopic,				// The topic exchange
+		routing.GameLogSlug+"."+username,		// A queue named game_logs.username where username is the username of the player that initiated the war
+		// The GameLog struct should be serialized using the PublishGob function. Fill all the fields in:
+		// Creates a new instance of the GameLog struct from the routing package:
+		// This struct represents a complete game log entry
+		routing.GameLog{
+			Username:    username,
+			CurrentTime: time.Now(),	// Set the CurrentTime field to the current timestamp 
+			Message:     msg,			// Set the Message field to the value of the msg parameter passed into your function
+		},
+	)
+}
+
+
+
 	// // wait for ctrl+c
 	// signalChan := make(chan os.Signal, 1)
 	// // If a signal is received, print a message to the console that the program is shutting down 
@@ -173,4 +202,4 @@ queueType: transient */
 	// signal.Notify(signalChan, os.Interrupt)
 	// <-signalChan
 	// fmt.Println("RabbitMQ connection closed.")
-}
+

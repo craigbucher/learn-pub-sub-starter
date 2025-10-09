@@ -86,19 +86,16 @@ func SubscribeJSON[T any](
 			// Processed successfully
 			case Ack:
 				msg.Ack(false)
-				fmt.Println("Ack")
 			// NackDiscard: msg.Nack(false, false):
 			// Not processed successfully, and should be discarded (to a dead-letter queue 
 			// if configured or just deleted entirely)
 			case NackDiscard:
 				msg.Nack(false, false)
-				fmt.Println("NackDiscard")
 			// msg.Nack(false, true):
 			// Not processed successfully, but should be requeued on the same queue to be 
 			// processed again (retry)
 			case NackRequeue:
 				msg.Nack(false, true)
-				fmt.Println("NackRequeue")
 			}
 		}
 	}()

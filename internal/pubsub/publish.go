@@ -1,7 +1,9 @@
 package pubsub
 
 import (
+	"bytes"
 	"context"
+	"encoding/gob"
 	"encoding/json"
 
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -40,3 +42,35 @@ func PublishJSON[T any](ch *amqp.Channel, exchange, key string, val T) error {
 	})
 }
 
+// Add a PublishGob function to the internal/pubsub package
+// It should be similar to the PublishJSON function, but encode to gob:
+	/* [T any] makes this a generic function. The T is a type parameter that can be any type. 
+	This allows you to call PublishGob with different types without rewriting the function for 
+	each one */
+	/* ch *amqp.Channel - A pointer to an AMQP channel, which is your connection to RabbitMQ 
+	for publishing messages */
+	/* val T - The value to be published. Its type is T, which means it can be any type you 
+	specify when calling the function */
+func PublishGob[T any](ch *amqp.Channel, exchange, key string, val T) error {
+	// Create a bytes buffer to collect the encoded data:
+	var buffer bytes.Buffer
+	// Build a gob encoder that writes into that buffer:
+	encoder := gob.NewEncoder(&buffer)
+	// Serialize val into gob format:
+	err := encoder.Encode(val)
+	if err != nil {
+		return err
+	}
+	// publish a message to RabbitMQ through the AMQP channel:
+		/* context.Background() - A context for the operation. Using Background() means there's 
+		no timeout or cancellation set up (it's a basic, non-cancelable context) */
+		/* false (first one) - The mandatory flag. When false, if the message can't be routed 
+		to any queue, it's silently dropped. If true, RabbitMQ would return an error */
+		/* false (second one) - The immediate flag. When false, the message can wait in a queue. 
+		If true, it would require an immediate consumer (this is deprecated in modern RabbitMQ) */
+		// amqp.Publishing{...} - The actual message being published:
+	return ch.PublishWithContext(context.Background(), exchange, key, false, false, amqp.Publishing{
+		ContentType: "application/gob",		// Set the ContentType option to application/gob
+		Body:        buffer.Bytes(), 	// The actual message content as a byte slice (the gob-encoded data from your buffer)
+	})
+}
