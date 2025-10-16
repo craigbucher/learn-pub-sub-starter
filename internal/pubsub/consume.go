@@ -97,6 +97,7 @@ func subscribe[T any](
 	if err != nil {
 		return fmt.Errorf("could not declare and bind queue: %v", err)
 	}
+	ch.Qos(10, 0, false)
 	/* Get a new chan of amqp.Delivery structs by using the channel.Consume method.
 		- Use an empty string for the consumer name so that it will be auto-generated
 		- Set all other parameters to false/nil */

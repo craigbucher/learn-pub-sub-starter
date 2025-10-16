@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"strconv"
 	"time"
 	// "os"
 	// "os/signal""
@@ -98,7 +99,7 @@ queueType: transient */
 		handlerPause(gs),						// From client/handlers.go
 	)
 	if err != nil {
-		log.Fatalf("could not subscribe to JSON: %v", err)
+		log.Fatalf("could not subscribe to Pause: %v", err)
 	}
 
 	// Add a REPL loop similar to what you did in the cmd/server application:
@@ -157,7 +158,27 @@ queueType: transient */
 				gamelogic.PrintClientHelp()
 			// For now, the spam command just prints a message that says "Spamming not allowed yet!"
 			case "spam":
-				fmt.Println("Spamming not allowed yet!")
+				if len(input) < 2 {
+				fmt.Println("usage: spam <n>")
+				continue
+			}
+			n, err := strconv.Atoi(input[1])
+			if err != nil {
+				fmt.Printf("error: %s is not a valid number\n", input[1])
+				continue
+			}
+			for i := 0; i < n; i++ {
+				// Use gamelogic.GetMaliciousLog to get a malicious log message:
+				msg := gamelogic.GetMaliciousLog()
+				/* Publish the log message (a struct) to Rabbit. Use the following parameters:
+				Exchange: peril_topic
+				Key: game_logs.username, where username is the username of the player */
+				err = publishGameLog(publishCh, username, msg)
+				if err != nil {
+					fmt.Printf("error publishing malicious log: %s\n", err)
+				}
+			}
+				fmt.Printf("Published %v malicious logs\n", n)
 			// The quit command uses the gamelogic.PrintQuit function to print a message, then exit the REPL
 			case "quit":
 				gamelogic.PrintQuit()
