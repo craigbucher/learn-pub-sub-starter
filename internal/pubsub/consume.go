@@ -3,6 +3,8 @@ package pubsub
 import (
 	"fmt"
 	"encoding/json"
+	"bytes"
+	"encoding/gob"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )
@@ -38,6 +40,57 @@ func SubscribeJSON[T any](
 	// Update your internal/pubsub.SubscribeJSON function's handler parameter to return an 
 	// "acktype" instead of nothing:
     handler func(T) Acktype,
+	) error {
+	return subscribe[T](
+		conn,
+		exchange,
+		queueName,
+		key,
+		queueType,
+		handler,
+		func(data []byte) (T, error) {
+			var target T
+			err := json.Unmarshal(data, &target)
+			return target, err
+		},
+	)
+}
+
+func SubscribeGob[T any](
+	conn *amqp.Connection,
+	exchange,
+	queueName,
+	key string,
+	queueType SimpleQueueType,
+	handler func(T) Acktype,
+) error {
+	return subscribe[T](
+		conn,
+		exchange,
+		queueName,
+		key,
+		queueType,
+		handler,
+		// an anonymous “unmarshaller” function. It takes raw bytes and returns a value of 
+		// generic type T plus an error:
+		func(data []byte) (T, error) {			
+			buffer := bytes.NewBuffer(data)		// Create a buffer over the bytes	 
+			decoder := gob.NewDecoder(buffer)	// Builds a gob decoder on that buffer
+			var target T						// Declares zero value var target T
+			err := decoder.Decode(&target)		// Decodes the gob bytes into target via decoder.Decode(&target)
+			return target, err					// Returns the decoded value and the decode error
+		},
+	)
+}
+
+func subscribe[T any](
+	conn *amqp.Connection,
+	exchange,
+	queueName,
+	key string,
+	queueType SimpleQueueType,
+	handler func(T) Acktype,
+	unmarshaller func([]byte) (T, error),
 ) error {
 	// Call DeclareAndBind to make sure that the given queue exists and is bound to the exchange:
 	ch, queue, err := DeclareAndBind(conn, exchange, queueName, key, queueType)
@@ -58,13 +111,6 @@ func SubscribeJSON[T any](
 	)
 	if err != nil {
 		return fmt.Errorf("could not consume messages: %v", err)
-	}
-	// create the unmarshaller function:
-	unmarshaller := func(data []byte) (T, error) {
-		// (Could also do these next 2 steps inside the goroutine)
-		var target T
-		err := json.Unmarshal(data, &target)
-		return target, err
 	}
 	// Start a goroutine that ranges over the channel of deliveries:
 	go func() {
